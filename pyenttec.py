@@ -1,20 +1,24 @@
 from __future__ import print_function
 
-import serial, sys
 import os
+import sys
+
+import serial
+
 
 _START_VAL = 0x7E
 _END_VAL = 0xE7
 
 _COM_BAUD = 57600
 _COM_TIMEOUT = 1
-_MIN_DMX_SIZE = 24
+_MIN_DMX_SIZE = 1
 _MAX_DMX_SIZE = 512
 
-_PACKET_END = chr(_END_VAL)
+_PACKET_END = bytes([_END_VAL])
 
-_port_directory = {'darwin': "/dev/",}
-_port_basenames = {'darwin': ["tty.usbserial"],}
+_port_directory = {'darwin': "/dev/"}
+_port_basenames = {'darwin': ["cu.usbserial"]}
+
 
 def _item_is_port(item, platform):
     basenames = _port_basenames[platform]
@@ -23,6 +27,7 @@ def _item_is_port(item, platform):
             return True
     return False
 
+
 def available_ports():
     """Get a list of available port names.
 
@@ -30,11 +35,12 @@ def available_ports():
     customization for your system.
     """
     platform = sys.platform
-    if platform not in _port_basenames.iterkeys():
+    if platform not in _port_basenames:
         raise EnttecPortOpenError("Unsupported platform '{}'; automatic port "
                                   "selection only supports {}."
                                   .format(platform, _port_basenames.keys()))
     return _available_ports(platform)
+
 
 def _available_ports(platform):
     return [item for item in os.listdir(_port_directory[platform])
@@ -51,7 +57,7 @@ def select_port(auto=True):
     customization for your system.
     """
     platform = sys.platform
-    if platform not in _port_basenames.iterkeys():
+    if platform not in _port_basenames:
         raise EnttecPortOpenError("Unsupported platform '{}'; automatic port "
                                   "selection only supports {}."
                                   .format(platform, _port_basenames.keys()))
@@ -77,12 +83,14 @@ def select_port(auto=True):
 
     return DMXConnection(_port_directory[platform] + port_name)
 
+
 class PortActions(object):
     """Not the complete set, and GetParameters and ReceiveDMXPacket are unused."""
     GetParameters = 3
     SetParameters = 4
     ReceiveDMXPacket = 5
     SendDMXPacket = 6
+
 
 class EnttecProParams(object):
     """Envelope to hold the state of an enttec port."""
@@ -108,7 +116,7 @@ class EnttecProParams(object):
                   (length >> 8) & 0xFF]
         packet += payload
         packet.append(_END_VAL)
-        return ''.join(chr(val) for val in packet)
+        return bytes(packet)
 
 
 class DMXConnection(object):
@@ -139,7 +147,7 @@ class DMXConnection(object):
                                     .format(univ_size, _MIN_DMX_SIZE))
 
         self._port_params = EnttecProParams()
-        self.dmx_frame = [0] * univ_size
+        self.dmx_frame = bytearray(univ_size)
         self._com_port = com_port
 
         self.com = None
@@ -181,9 +189,9 @@ class DMXConnection(object):
         packet_start = [_START_VAL,
                         PortActions.SendDMXPacket,
                         (univ_size + 1) & 0xFF,
-                        ( (univ_size + 1) >> 8) & 0xFF,
+                        ((univ_size + 1) >> 8) & 0xFF,
                         0]
-        self._packet_start = ''.join(chr(v) for v in packet_start)
+        self._packet_start = bytes(packet_start)
 
         self._write_settings()
 
@@ -194,9 +202,9 @@ class DMXConnection(object):
     def render(self):
         """Write the current DMX frame to the port."""
 
-        dmx_payload = (chr(v) for v in self.dmx_frame)
-
-        self.com.write(self._packet_start + ''.join(dmx_payload) + _PACKET_END)
+        self.com.write(
+            self._packet_start + self.dmx_frame + _PACKET_END
+        )
 
     def set_channel(self, chan, val):
         """Set the value of a DMX channel, indexed from 0.
@@ -212,7 +220,7 @@ class DMXConnection(object):
 
     def blackout(self):
         """Zero all DMX values."""
-        self.dmx_frame = [0] * len(self.dmx_frame)
+        self.dmx_frame[:] = b'\x00' * len(self.dmx_frame)
 
     def close(self):
         """Close the port manually."""
@@ -232,9 +240,9 @@ class DMXConnectionOffline(DMXConnection):
         packet_start = [_START_VAL,
                         PortActions.SendDMXPacket,
                         (univ_size + 1) & 0xFF,
-                        ( (univ_size + 1) >> 8) & 0xFF,
+                        ((univ_size + 1) >> 8) & 0xFF,
                         0]
-        self._packet_start = ''.join(chr(v) for v in packet_start)
+        self._packet_start = bytes(packet_start)
 
         self._write_settings()
 
@@ -252,8 +260,10 @@ class DMXConnectionOffline(DMXConnection):
 class EnttecPortOpenError(Exception):
     pass
 
+
 class EnttecConfigError(Exception):
     pass
+
 
 class DMXAddressError(Exception):
     pass
